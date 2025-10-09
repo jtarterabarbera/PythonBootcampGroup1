@@ -4,6 +4,7 @@ This repository contains the work of Group 1 from the Python Bootcamp in Statist
 
 The project focuses on developing a machine learning algorithm to classify galaxy morphologies. 
 
+The project combines catalog data (photometric and morphological parameters) with image data (pixel-level information from SDSS) to train and evaluate the classifier.
 
 Pipeline:
 
