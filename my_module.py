@@ -8,6 +8,99 @@ def safe_to_numeric(col):
     except Exception:
         return col  # leave unchanged if it can't be fully parsed
 
+from concurrent.futures import ThreadPoolExecutor
+from astroquery.utils.tap.core import TapPlus
+import pandas as pd
+
+def load_TAP_data(URL, ra_slices=8, max_workers=4):
+    """
+    Descarrega totes les dades del TAP dividint el cel en franges de RA
+    i fent les consultes en paral·lel.
+    """
+    adql_template = """
+    SELECT z.*, p.*
+    FROM BestDR9.ZooSpec AS z 
+    JOIN BestDR7.PhotoObj AS p ON p.objid = z.dr7objid
+    WHERE p.ra >= {ra_min} AND p.ra < {ra_max}
+    """
+
+    def fetch_slice(ra_min, ra_max):
+        try:
+            tap = TapPlus(url=URL)
+            query = adql_template.format(ra_min=ra_min, ra_max=ra_max)
+            job = tap.launch_job(query, maxrec=-1)
+            return job.get_results().to_pandas()
+        except Exception as e:
+            print(f"Error al rang RA [{ra_min}, {ra_max}): {e}")
+            return pd.DataFrame()
+
+    step = 360 / ra_slices
+    ranges = [(i * step, (i + 1) * step) for i in range(ra_slices)]
+
+    dfs = []
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        for df_part in ex.map(lambda r: fetch_slice(*r), ranges):
+            if not df_part.empty:
+                dfs.append(df_part)
+
+    if not dfs:
+        return pd.DataFrame()
+
+    df = pd.concat(dfs, ignore_index=True)
+
+    # Conversió numèrica i índex
+    if "dr7objid" in df.columns:
+        df = df.apply(safe_to_numeric, errors="ignore")
+        df = df.drop_duplicates(subset="dr7objid").set_index("dr7objid")
+
+    return df
+from concurrent.futures import ThreadPoolExecutor
+from astroquery.utils.tap.core import TapPlus
+import pandas as pd
+
+def load_TAP_data_simpler(URL, ra_slices=8, max_workers=4):
+    """
+    Descarrega totes les dades del TAP dividint el cel en franges de RA
+    i fent les consultes en paral·lel.
+    """
+    adql_template = """
+    SELECT z.*, p.*
+    FROM BestDR9.ZooSpec AS z 
+    JOIN BestDR7.PhotoObj AS p ON p.objid = z.dr7objid
+    WHERE p.ra >= {ra_min} AND p.ra < {ra_max}
+    """
+
+    def fetch_slice(ra_min, ra_max):
+        try:
+            tap = TapPlus(url=URL)
+            query = adql_template.format(ra_min=ra_min, ra_max=ra_max)
+            job = tap.launch_job(query, maxrec=-1)
+            return job.get_results().to_pandas()
+        except Exception as e:
+            print(f"Error al rang RA [{ra_min}, {ra_max}): {e}")
+            return pd.DataFrame()
+
+    step = 360 / ra_slices
+    ranges = [(i * step, (i + 1) * step) for i in range(ra_slices)]
+
+    dfs = []
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        for df_part in ex.map(lambda r: fetch_slice(*r), ranges):
+            if not df_part.empty:
+                dfs.append(df_part)
+
+    if not dfs:
+        return pd.DataFrame()
+
+    df = pd.concat(dfs, ignore_index=True)
+
+    # Conversió numèrica i índex
+    if "dr7objid" in df.columns:
+        df = df.apply(safe_to_numeric, errors="ignore")
+        df = df.drop_duplicates(subset="dr7objid").set_index("dr7objid")
+
+    return df
+
 def load_TAP_data(URL):
     # Connect to the TAP service
     tap = TapPlus(url=URL)
