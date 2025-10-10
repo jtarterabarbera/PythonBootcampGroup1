@@ -1,112 +1,44 @@
 import pandas as pd
-from astroquery.utils.tap.core import TapPlus  # library to query astronomical databases, TAP services
+from astroquery.utils.tap.core import TapPlus 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import urllib.request
+from PIL import Image as PILImage
+from io import BytesIO
 
 
+    
 def safe_to_numeric(col):
-    try:
-        return pd.to_numeric(col, errors="raise")
-    except Exception:
-        return col  # leave unchanged if it can't be fully parsed
-
-from concurrent.futures import ThreadPoolExecutor
-from astroquery.utils.tap.core import TapPlus
-import pandas as pd
-
-def load_TAP_data(URL, ra_slices=8, max_workers=4):
     """
-    Descarrega totes les dades del TAP dividint el cel en franges de RA
-    i fent les consultes en paral·lel.
-    """
-    adql_template = """
-    SELECT z.*, p.*
-    FROM BestDR9.ZooSpec AS z 
-    JOIN BestDR7.PhotoObj AS p ON p.objid = z.dr7objid
-    WHERE p.ra >= {ra_min} AND p.ra < {ra_max}
+    Convert a pandas Series to numeric, ignoring errors.
+    If conversion fails, returns the original Series.
     """
 
-    def fetch_slice(ra_min, ra_max):
-        try:
-            tap = TapPlus(url=URL)
-            query = adql_template.format(ra_min=ra_min, ra_max=ra_max)
-            job = tap.launch_job(query, maxrec=-1)
-            return job.get_results().to_pandas()
-        except Exception as e:
-            print(f"Error al rang RA [{ra_min}, {ra_max}): {e}")
-            return pd.DataFrame()
+    return pd.to_numeric(col, errors='ignore') 
 
-    step = 360 / ra_slices
-    ranges = [(i * step, (i + 1) * step) for i in range(ra_slices)]
 
-    dfs = []
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        for df_part in ex.map(lambda r: fetch_slice(*r), ranges):
-            if not df_part.empty:
-                dfs.append(df_part)
-
-    if not dfs:
-        return pd.DataFrame()
-
-    df = pd.concat(dfs, ignore_index=True)
-
-    # Conversió numèrica i índex
-    if "dr7objid" in df.columns:
-        df = df.apply(safe_to_numeric, errors="ignore")
-        df = df.drop_duplicates(subset="dr7objid").set_index("dr7objid")
-
-    return df
-from concurrent.futures import ThreadPoolExecutor
-from astroquery.utils.tap.core import TapPlus
-import pandas as pd
-
-def load_TAP_data_simpler(URL, ra_slices=8, max_workers=4):
+def load_TAP_data(URL, ra_slices: int = 8, max_workers: int = 4):
     """
-    Descarrega totes les dades del TAP dividint el cel en franges de RA
-    i fent les consultes en paral·lel.
-    """
-    adql_template = """
-    SELECT z.*, p.*
-    FROM BestDR9.ZooSpec AS z 
-    JOIN BestDR7.PhotoObj AS p ON p.objid = z.dr7objid
-    WHERE p.ra >= {ra_min} AND p.ra < {ra_max}
+    Download all rows from the TAP service (no TOP limit) by splitting
+    the sky in RA slices and querying them in parallel.
+
+    Parameters
+    ----------
+    URL : str
+        TAP service URL.
+    ra_slices : int, optional
+        Number of RA partitions in [0, 360) to query in parallel. Default = 8.
+    max_workers : int, optional
+        Number of threads for parallel downloading. Default = 4.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Combined DataFrame of all results with index set to 'dr7objid'.
     """
 
-    def fetch_slice(ra_min, ra_max):
-        try:
-            tap = TapPlus(url=URL)
-            query = adql_template.format(ra_min=ra_min, ra_max=ra_max)
-            job = tap.launch_job(query, maxrec=-1)
-            return job.get_results().to_pandas()
-        except Exception as e:
-            print(f"Error al rang RA [{ra_min}, {ra_max}): {e}")
-            return pd.DataFrame()
-
-    step = 360 / ra_slices
-    ranges = [(i * step, (i + 1) * step) for i in range(ra_slices)]
-
-    dfs = []
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        for df_part in ex.map(lambda r: fetch_slice(*r), ranges):
-            if not df_part.empty:
-                dfs.append(df_part)
-
-    if not dfs:
-        return pd.DataFrame()
-
-    df = pd.concat(dfs, ignore_index=True)
-
-    # Conversió numèrica i índex
-    if "dr7objid" in df.columns:
-        df = df.apply(safe_to_numeric, errors="ignore")
-        df = df.drop_duplicates(subset="dr7objid").set_index("dr7objid")
-
-    return df
-
-def load_TAP_data(URL):
-    # Connect to the TAP service
-    tap = TapPlus(url=URL)
-
-    adql = """
-    SELECT TOP 100000
+    # Base ADQL without TOP cap; we add a WHERE clause per RA slice
+    adql_template = """ 
+    SELECT
         z.*,
         p.*
     FROM BestDR9.ZooSpec AS z 
@@ -115,16 +47,194 @@ def load_TAP_data(URL):
     WHERE {where_clause}
     """
 
-    # Run query
-    job = tap.launch_job(adql)
-    results = job.get_results()
-    df = results.to_pandas()  # convert to pandas DataFrame
+    # Helper to fetch a single RA slice. Use a fresh TapPlus per thread to be safe.
+    def fetch_slice(ra_min: float, ra_max: float, wrap: bool = False) -> pd.DataFrame:
+        where = (
+            f"(p.ra >= {ra_min}) OR (p.ra < {ra_max})" if wrap
+            else f"(p.ra >= {ra_min}) AND (p.ra < {ra_max})"
+        )
+        adql = adql_template.format(where_clause=where)
+        try:
+            tap_local = TapPlus(url=URL)
+            job = tap_local.launch_job(adql)
+            results = job.get_results()
+            return results.to_pandas()
+        except Exception as e:
+            print(f"⚠️ RA slice [{ra_min}, {ra_max}) failed: {e}")
+            return pd.DataFrame()
+
+    # Build RA slices across [0, 360)
+    ra_slices = max(1, int(ra_slices))
+    edges = [i * (360.0 / ra_slices) for i in range(ra_slices)]
+
+    dfs = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = []
+        for i in range(ra_slices):
+            ra_min = edges[i]
+            ra_max = edges[(i + 1) % ra_slices]
+            wrap = i == ra_slices - 1  # last slice wraps around to 0
+            futures.append(executor.submit(fetch_slice, ra_min, ra_max, wrap))
+
+        for f in as_completed(futures):
+            df_part = f.result()
+            if df_part is not None and not df_part.empty:
+                dfs.append(df_part)
+
+    if not dfs:
+        return pd.DataFrame()
+
+    # Concatenate and clean
+    df = pd.concat(dfs, ignore_index=True)
 
     # Convert columns safely to numeric and set index
-    df = df.apply(safe_to_numeric).set_index("dr7objid")
+    df = df.apply(safe_to_numeric)
+
+    # Remove any accidental duplicates on join key
+    if "dr7objid" in df.columns:
+        df = df.drop_duplicates(subset=["dr7objid"]).set_index("dr7objid")
+    else:
+        # Fallback: set a generic index
+        df = df.drop_duplicates().reset_index(drop=True)
 
     return df
 
+
+
+import pandas as pd
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from astroquery.utils.tap.core import TapPlus
+
+def load_TAP_data_parallel(URL, ra_slices=4, max_workers=4):
+    """
+    Download data from a TAP service in parallel by splitting the sky into RA slices.
+
+    Parameters
+    ----------
+    URL : str
+        TAP service URL.
+    ra_slices : int
+        Number of RA partitions (default = 4).
+    max_workers : int
+        Number of parallel threads (default = 4).
+
+    Returns
+    -------
+    pandas.DataFrame
+        Combined DataFrame of all results.
+    """
+
+    # Template for the SQL template for each slice
+    # Select all columns from both tables and join them on objid 
+    
+    adql_template = """
+    SELECT
+        z.*,
+        p.*
+    FROM BestDR9.ZooSpec AS z 
+    JOIN BestDR7.PhotoObj AS p
+    ON p.objid = z.dr7objid
+    WHERE {where_clause} 
+    """
+    # Function that runs an SQL query for one RA slice
+    def fetch_slice(ra_min, ra_max):
+
+        where = f"(p.ra >= {ra_min} AND p.ra < {ra_max})" # Defines slice
+
+        adql = adql_template.format(where_clause=where) # Final ADQL for this slice
+
+        try:
+            tap = TapPlus(url=URL)          # New connection per thread
+            job = tap.launch_job(adql)      # Perform the query
+            results = job.get_results()     # Get results (table)
+            df = results.to_pandas()
+            print(f"✅ Fetched slice RA {ra_min:.1f}–{ra_max:.1f} ({len(df)} rows)")
+            return df
+        
+        except Exception as e:
+            print(f"⚠️ Failed slice RA {ra_min:.1f}–{ra_max:.1f}: {e}")
+            return pd.DataFrame()
+        
+    # Create RA slices
+    step = 360.0 / ra_slices
+    edges = [i * step for i in range(ra_slices)] + [360.0] 
+
+    # Run all slices in parallel
+    dfs = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:  # Thread = Working lines
+        futures = [executor.submit(fetch_slice, edges[i], edges[i + 1]) for i in range(ra_slices)]  # List of all the pending jobs 
+        for f in as_completed(futures):
+            df_part = f.result()
+            if df_part is not None and not df_part.empty:
+                dfs.append(df_part)
+
+    if not dfs:
+        print("No data retrieved.")
+        return pd.DataFrame()
+
+    df_total = pd.concat(dfs, ignore_index=True)
+
+    # De-duplicate and set index if available
+    if "dr7objid" in df_total.columns:
+        df_total = df_total.drop_duplicates(subset=["dr7objid"]).set_index("dr7objid")
+    else:
+        df_total = df_total.drop_duplicates().reset_index(drop=True)
+
+    return df_total
+
+
+import pandas as pd
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from astroquery.utils.tap.core import TapPlus
+
+def load_TAP_data_parallel_simple(URL, ra_slices=8, max_workers=4):
+    """
+    Download TAP data in parallel using RA slices, assuming every slice has data.
+    """
+    # SQL template for each slice
+    adql_template = """
+    SELECT
+        z.*,
+        p.*
+    FROM BestDR9.ZooSpec AS z 
+    JOIN BestDR7.PhotoObj AS p
+    ON p.objid = z.dr7objid
+    WHERE p.ra >= {ra_min} AND p.ra < {ra_max}
+    """
+
+    # Helper function to fetch a slice
+    def fetch_slice(ra_min, ra_max):
+
+        adql = adql_template.format(ra_min=ra_min, ra_max=ra_max)
+
+        tap = TapPlus(url=URL)          # New connection per thread
+        job = tap.launch_job(adql)      # Perform the query
+        results = job.get_results()     # Get results (table)
+        df = results.to_pandas()
+
+        return df
+
+    # RA slice boundaries
+    slice_size = 360.0 / ra_slices
+    edges = [i * slice_size for i in range(ra_slices + 1)]  # include end point
+
+    
+    # Run all slices in parallel
+    dfs = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:  # Thread = Working lines
+        futures = [executor.submit(fetch_slice, edges[i], edges[i + 1]) for i in range(ra_slices)] # Schedule one task per slice; returns Future objects (start running as workers are free)
+        for f in as_completed(futures): # As each job completes
+            df_part = f.result()
+            dfs.append(df_part)
+
+    
+    df_total = pd.concat(dfs, ignore_index=True)
+
+    # Remove duplicates on 'dr7objid'
+    if 'dr7objid' in df_total.columns:
+        df_total = df_total.drop_duplicates(subset=['dr7objid']).set_index('dr7objid')
+
+    return df_total
 
     
 
@@ -174,11 +284,7 @@ def clean_data(df):
 
 
 # my_module.py
-import urllib.request
-from PIL import Image as PILImage
-import pandas as pd
-from io import BytesIO
-from concurrent.futures import ThreadPoolExecutor, as_completed
+
 
 # -------------------------------
 # Parallelized SDSS pixel fetch
