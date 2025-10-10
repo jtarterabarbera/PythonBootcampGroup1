@@ -413,9 +413,9 @@ def fetch_sdss_pixels_version2(df,
 # PCA on pixel data
 
 
-def apply_pca_to_pixels(df_pixels, df_filtered, n_components=100, save_path=None):
+def apply_pca_to_pixels(df_pixels, n_components=100, save_path=None):
     """
-    Apply PCA to pixel data and merge the resulting components with metadata.
+    Apply PCA to pixel data.
 
     Parameters
     ----------
@@ -450,12 +450,5 @@ def apply_pca_to_pixels(df_pixels, df_filtered, n_components=100, save_path=None
     df_pca = pd.DataFrame(X_pca, columns=[f"PC{i+1}" for i in range(n_components)])
     df_pca.insert(0, "objid", obj_ids)
 
-    # To merge PCA results with filtered metadata
-    df_final = pd.merge(df_filtered, df_pca, on="objid", how="inner")
-
-    # Saving
-    if save_path:
-        df_final.to_csv(save_path, index=False)
-
-    return df_final
+    return df_pca
 
