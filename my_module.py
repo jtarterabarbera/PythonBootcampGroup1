@@ -1,42 +1,19 @@
 import pandas as pd
 from astroquery.utils.tap.core import TapPlus  # library to query astronomical databases, TAP services
-import urllib.request
-from PIL import Image as PILImage
-from io import BytesIO
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
 
 
-def safe_to_numeric(col, **kwargs):
+def safe_to_numeric(col):
     try:
         return pd.to_numeric(col, errors="raise")
     except Exception:
-        return col
+        return col  # leave unchanged if it can't be fully parsed
 
+def load_TAP_data(URL):
+    # Connect to the TAP service
+    tap = TapPlus(url=URL)
 
-def load_TAP_data(URL, ra_slices: int = 8, max_workers: int = 4):
-    """Download all rows from the TAP service by splitting
-    the sky in RA slices and querying them in parallel.
-
-    Parameters
-    ----------
-    URL : str
-        TAP service URL.
-    ra_slices : int, optional
-        Number of RA partitions in [0, 360) to query in parallel. Default = 8.
-    max_workers : int, optional
-        Number of threads for parallel downloading. Default = 4.
-
-    Returns
-    -------
-    pandas.DataFrame
-        Combined DataFrame of all results with index set to 'dr7objid'.
-    """
-
-    # Base ADQL without TOP cap; we add a WHERE clause per RA slice
-    adql_template = """
-    SELECT
+    adql = """
+    SELECT TOP 100000
         z.*,
         p.*
     FROM BestDR9.ZooSpec AS z 
@@ -45,124 +22,41 @@ def load_TAP_data(URL, ra_slices: int = 8, max_workers: int = 4):
     WHERE {where_clause}
     """
 
-    # Helper to fetch a single RA slice. Use a fresh TapPlus per thread to be safe.
-    def fetch_slice(ra_min: float, ra_max: float) -> pd.DataFrame:
-        where = f"(p.ra >= {ra_min}) AND (p.ra < {ra_max})"
-        adql = adql_template.format(where_clause=where)
-        try:
-            tap_local = TapPlus(url=URL)
-            # maxrec=-1 requests all available rows for this slice
-            job = tap_local.launch_job(adql, maxrec=-1)
-            results = job.get_results()
-            return results.to_pandas()
-        except Exception as e:
-            print(f"⚠️ RA slice [{ra_min}, {ra_max}) failed: {e}")
-            return pd.DataFrame()
-
-    # Build RA slices across [0, 360)
-    ra_slices = max(1, int(ra_slices))
-    step = 360.0 / ra_slices
-    edges = [i * step for i in range(ra_slices)] + [360.0]
-
-    dfs = []
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = []
-        for i in range(ra_slices):
-            ra_min = edges[i]
-            ra_max = edges[i + 1]
-            futures.append(executor.submit(fetch_slice, ra_min, ra_max))
-
-        for f in as_completed(futures):
-            df_part = f.result()
-            if df_part is not None and not df_part.empty:
-                dfs.append(df_part)
-
-    if not dfs:
-        return pd.DataFrame()
-
-    # Concatenate and clean
-    df = pd.concat(dfs, ignore_index=True)
+    # Run query
+    job = tap.launch_job(adql)
+    results = job.get_results()
+    df = results.to_pandas()  # convert to pandas DataFrame
 
     # Convert columns safely to numeric and set index
-    df = df.apply(safe_to_numeric)
-
-    # Remove any accidental duplicates on join key
-    if "dr7objid" in df.columns:
-        df = df.drop_duplicates(subset=["dr7objid"]).set_index("dr7objid")
-    else:
-        # Fallback: set a generic index
-        df = df.drop_duplicates().reset_index(drop=True)
-
-    return df
-
-from concurrent.futures import ThreadPoolExecutor
-from astroquery.utils.tap.core import TapPlus
-import pandas as pd
-
-def load_TAP_data_simpler(URL, ra_slices=8, max_workers=4):
-    """
-    Descarrega totes les dades del TAP dividint el cel en franges de RA
-    i fent les consultes en paral·lel.
-    """
-    adql_template = """
-    SELECT z.*, p.*
-    FROM BestDR9.ZooSpec AS z 
-    JOIN BestDR7.PhotoObj AS p ON p.objid = z.dr7objid
-    WHERE p.ra >= {ra_min} AND p.ra < {ra_max}
-    """
-
-    def fetch_slice(ra_min, ra_max):
-        try:
-            tap = TapPlus(url=URL)
-            query = adql_template.format(ra_min=ra_min, ra_max=ra_max)
-            job = tap.launch_job(query, maxrec=-1)
-            return job.get_results().to_pandas()
-        except Exception as e:
-            print(f"Error al rang RA [{ra_min}, {ra_max}): {e}")
-            return pd.DataFrame()
-
-    step = 360 / ra_slices
-    ranges = [(i * step, (i + 1) * step) for i in range(ra_slices)]
-
-    dfs = []
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        for df_part in ex.map(lambda r: fetch_slice(*r), ranges):
-            if not df_part.empty:
-                dfs.append(df_part)
-
-    if not dfs:
-        return pd.DataFrame()
-
-    df = pd.concat(dfs, ignore_index=True)
-
-    # Conversió numèrica i índex
-    if "dr7objid" in df.columns:
-        df = df.apply(safe_to_numeric, errors="ignore")
-        df = df.drop_duplicates(subset="dr7objid").set_index("dr7objid")
+    df = df.apply(safe_to_numeric).set_index("dr7objid")
 
     return df
 
 
+    
 
 def clean_data(df):
     # Apply the mask to filter the DataFrame
     mask = (
-        # correct magnitudes
+        # Correct magnitudes
         (df["modelMag_u"] > -30)
         & (df["modelMag_g"] > -30)
         & (df["modelMag_r"] > -30)
         & (df["modelMag_i"] > -30)
         & (df["modelMag_z"] > -30)
+        &
         # reasonable errors
-        & (df["modelMagErr_u"] < 0.5)
+        (df["modelMagErr_u"] < 0.5)
         & (df["modelMagErr_g"] < 0.05)
         & (df["modelMagErr_r"] < 0.05)
         & (df["modelMagErr_i"] < 0.05)
         & (df["modelMagErr_z"] < 0.1)
+        &
         # very certain about the classification
-        & ((df["p_cs_debiased"] >= 0.9) | (df["p_el_debiased"] >= 0.9))
+        ((df["p_cs_debiased"] >= 0.9) | (df["p_el_debiased"] >= 0.9))
+        &
         # medium size
-        & (df["petroR90_r"] * 2 * 1.5 / 0.4 < 64)
+        (df["petroR90_r"] * 2 * 1.5 / 0.4 < 64)
         & (df["petroR90_r"] * 2 / 0.4 > 20)
     )
 
@@ -185,11 +79,17 @@ def clean_data(df):
     df_filtered = df[mask][cols_to_keep]
     return df_filtered
 
- 
+
+# my_module.py
+import urllib.request
+from PIL import Image as PILImage
+import pandas as pd
+from io import BytesIO
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # -------------------------------
 # Parallelized SDSS pixel fetch
-# -------------------------------
+
 def fetch_sdss_pixels(df, 
                       image_pixscale=0.4, 
                       image_width_px=64, 
@@ -241,9 +141,7 @@ def fetch_sdss_pixels(df,
             print(f"⚠️ Error for objid {objid}: {e}")
             return objid, None
 
-    # -------------------------------
     # Parallel download
-    # -------------------------------
     pixel_data = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(fetch_image_pixels, row) for idx, row in df.iterrows()]
@@ -282,22 +180,22 @@ def apply_pca_to_pixels(df_pixels, df_filtered, n_components=100, save_path=None
     obj_ids = df_pixels["objid"]
     pixel_data = df_pixels.drop(columns=["objid"])
 
-    # 1️⃣ Normalize pixel data
+    # To normalize pixel data
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(pixel_data)
 
-    # 2️⃣ Apply PCA
+    # For applying the PCA
     pca = PCA(n_components=n_components, random_state=42)
     X_pca = pca.fit_transform(X_scaled)
 
-    # 3️⃣ Build a PCA DataFrame
+    # For building a PCA DataFrame
     df_pca = pd.DataFrame(X_pca, columns=[f"PC{i+1}" for i in range(n_components)])
     df_pca.insert(0, "objid", obj_ids)
 
-    # 4️⃣ Merge PCA results with filtered metadata
+    # To merge PCA results with filtered metadata
     df_final = pd.merge(df_filtered, df_pca, on="objid", how="inner")
 
-    # 5️⃣ Optionally save
+    # Saving
     if save_path:
         df_final.to_csv(save_path, index=False)
 
