@@ -4,8 +4,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import urllib.request
 from PIL import Image as PILImage
 from io import BytesIO
+import time
 
-
+# -------------------------------
+# Parallelized load of TAP DATA
     
 def safe_to_numeric(col):
     """
@@ -101,10 +103,6 @@ def load_TAP_data(URL, ra_slices: int = 8, max_workers: int = 4):
 
 
 
-import pandas as pd
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from astroquery.utils.tap.core import TapPlus
-
 def load_TAP_data_parallel(URL, ra_slices=4, max_workers=4):
     """
     Download data from a TAP service in parallel by splitting the sky into RA slices.
@@ -183,10 +181,6 @@ def load_TAP_data_parallel(URL, ra_slices=4, max_workers=4):
     return df_total
 
 
-import pandas as pd
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from astroquery.utils.tap.core import TapPlus
-
 def load_TAP_data_parallel_simple(URL, ra_slices=8, max_workers=4):
     """
     Download TAP data in parallel using RA slices, assuming every slice has data.
@@ -202,7 +196,7 @@ def load_TAP_data_parallel_simple(URL, ra_slices=8, max_workers=4):
     WHERE p.ra >= {ra_min} AND p.ra < {ra_max}
     """
 
-    # Helper function to fetch a slice
+    # Function to parallelize: fetch one RA slice
     def fetch_slice(ra_min, ra_max):
 
         adql = adql_template.format(ra_min=ra_min, ra_max=ra_max)
@@ -236,7 +230,8 @@ def load_TAP_data_parallel_simple(URL, ra_slices=8, max_workers=4):
 
     return df_total
 
-    
+# -------------------------------
+# Data cleaning
 
 def clean_data(df):
     # Apply the mask to filter the DataFrame
@@ -283,8 +278,6 @@ def clean_data(df):
     return df_filtered
 
 
-# my_module.py
-
 
 # -------------------------------
 # Parallelized SDSS pixel fetch
@@ -325,7 +318,7 @@ def fetch_sdss_pixels(df,
         "ra={ra}&dec={dec}&scale={scale}&width={width}&height={height}"
     )
 
-    # Function to fetch one image
+    # Function to parallelize: fetch one image
     def fetch_image_pixels(row):
         objid = row["objid"]
         ra, dec = row["ra"], row["dec"]
@@ -352,6 +345,72 @@ def fetch_sdss_pixels(df,
     df_pixels = pd.DataFrame(pixel_data)
 
     return df_pixels
+
+
+
+def fetch_sdss_pixels_version2(df, 
+                      image_pixscale=0.4, 
+                      image_width_px=64, 
+                      image_height_px=64, 
+                      max_workers=4,
+                      save_path=None,
+                      retries=3, # number of retries per image, avoid timeouts
+                      timeout=5): # timeout per image in seconds
+    """
+    Download SDSS cutout images for a DataFrame of objects (RA, DEC, OBJID)
+    in parallel, with retries and timeout, and return a flattened pixel DataFrame.
+    """
+
+    URL_TEMPLATE = (
+        "https://skyserver.sdss.org/DR19/SkyserverWS/ImgCutout/getjpeg?"
+        "ra={ra}&dec={dec}&scale={scale}&width={width}&height={height}"
+    )
+    # Function to parallelize: fetch one image with retries
+    def fetch_image_pixels(row):
+        """Fetch pixels for one object, with retries and timeout."""
+        objid, ra, dec = row["objid"], row["ra"], row["dec"]
+
+        for attempt in range(1, retries + 1):
+            try:
+                url = URL_TEMPLATE.format(ra=ra, dec=dec, scale=image_pixscale,
+                                          width=image_width_px, height=image_height_px)
+                
+                blob = urllib.request.urlopen(url, timeout=timeout).read() # Get the image from the url (via HTTP GET request)
+                bytes = blob.read()                                        # Gives the raw binary data (the JPEG file contents).
+                image = PILImage.open(BytesIO(bytes)).convert("L")         # Wrap in a file-like BytesIO buffer, PIL opens the image, converts as grayscale ("L" mode)
+                pixels = list(image.getdata())                             # Get pixel values as a flat list
+
+                return objid, pixels
+            
+            except Exception as e:
+                print(f"⚠️ objid {objid}, attempt {attempt}/{retries} failed: {e}")
+                time.sleep(0.5)  # short delay before retrying
+
+        # All retries failed
+        return objid, None
+
+    # Parallel download
+    pixel_data = [] # List of dicts with objid and pixel columns
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(fetch_image_pixels, row) for _, row in df.iterrows()] # Schedule each row as a separate task
+        for f in as_completed(futures):
+            objid, pixels = f.result()
+            if pixels is not None:
+                pixel_data.append({"objid": objid, **{f"pix_{i}": val for i, val in enumerate(pixels)}}) # Flatten pixels into columns
+
+    # Combine all into a DataFrame
+    df_pixels = pd.DataFrame(pixel_data)
+
+    # Optionally save to CSV
+    if save_path is not None:
+        df_pixels.to_csv(save_path, index=False)
+
+    return df_pixels
+
+
+
+# -------------------------------
+# PCA on pixel data
 
 
 def apply_pca_to_pixels(df_pixels, df_filtered, n_components=100, save_path=None):
