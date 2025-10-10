@@ -8,6 +8,6 @@ The project combines catalog data (photometric and morphological parameters) wit
 
 Pipeline:
 
-1. LoadFilterData.ipynb Loads and Filters the data and creates MergedZooSpecPhotoDR19.csv
-2. SDSS_Pixel_PCA.ipynb Extracts the pixels of the images using parallelized for a sample of MergedZooSpecPhotoDR19.csv and performs PCA to get the 100 most important pixels columns. Then it merges with MergedZooSpecPhotoDR19.csv and creates PCA_Pixels.csv with the final table
+1. LoadFilterData.ipynb Loads and Filters the data and creates the file 'MergedZooSpecPhotoDR19.csv'. The information loaded ads up to 138.960 galaxies and after the filtering reduces to 13.460. 
+2. SDSS_Pixel_PCA.ipynb Extracts the pixels of the images of a sample of 'MergedZooSpecPhotoDR19.csv' using the coordinates (ra,dec). Download SDSS cutout images for a sample of 'MergedZooSpecPhotoDR19.csv' of objects (RA, DEC, OBJID) in parallel and return a flattened pixel DataFrame. The procedure is parallelized for faster results. Then to reduce the size of information a PCA is applied to get the 100 most important pixels columns. Then it merges with MergedZooSpecPhotoDR19.csv and creates PCA_Pixels.csv with the final table. 
 3. Machine Learning algoritm using Random forest 
