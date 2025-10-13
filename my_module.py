@@ -412,10 +412,72 @@ def fetch_sdss_pixels_version2(df,
 # -------------------------------
 # PCA on pixel data
 
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+import pandas as pd
+
+def determine_optimal_pca_components(df_pixels, variance_threshold=0.95):
+    """
+    Determine the optimal number of PCA components required to explain
+    a given percentage of the total variance in the pixel data.
+
+    This function standardizes the pixel data, fits a PCA model
+    with all available components, and computes the cumulative explained
+    variance ratio to identify how many components are needed to retain
+    the desired amount of information (e.g., 95%).
+
+    Parameters
+    ----------
+    df_pixels : pandas.DataFrame
+        DataFrame containing 'objid' and pixel columns (pix_0, pix_1, ...).
+        Each row corresponds to one image.
+    variance_threshold : float, optional
+        Desired cumulative variance ratio (between 0 and 1). 
+        Default = 0.95 (i.e., 95% of the variance).
+
+    Returns
+    -------
+    n_components : int
+        Minimum number of principal components needed to reach 
+        the specified variance threshold.
+    explained_variance_ratio : pandas.Series
+        Cumulative explained variance ratio for all components.
+
+    Example
+    -------
+    >>> n, var_ratio = determine_optimal_pca_components(df_pixels, 0.95)
+    >>> print(f"Optimal components: {n}")
+    >>> df_pca = apply_pca_to_pixels(df_pixels, n_components=n)
+    """
+
+    # Separate pixel data from object IDs
+    pixel_data = df_pixels.drop(columns=["objid"], errors="ignore")
+
+    # Normalize pixel values
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(pixel_data)
+
+    # Fit PCA with all available components
+    pca = PCA()
+    pca.fit(X_scaled)
+
+    # Calculate cumulative explained variance
+    cumulative_variance = pca.explained_variance_ratio_.cumsum() 
+
+    # Determine number of components needed to reach the threshold
+    n_components = (cumulative_variance < variance_threshold).sum() + 1
+
+    # Return both the number of components and the cumulative variance series
+    return n_components, pd.Series(cumulative_variance)
+
+
 
 def apply_pca_to_pixels(df_pixels, n_components=100, save_path=None):
     """
-    Apply PCA to pixel data.
+    Apply PCA to pixel data to identify the principal components 
+    — linear combinations of pixels that explain the largest 
+    amount of variation among images. This allows representing 
+    each image with fewer variables while retaining most of the visual information.
 
     Parameters
     ----------
@@ -439,8 +501,8 @@ def apply_pca_to_pixels(df_pixels, n_components=100, save_path=None):
     pixel_data = df_pixels.drop(columns=["objid"])
 
     # To normalize pixel data
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(pixel_data)
+    scaler = StandardScaler() 
+    X_scaled = scaler.fit_transform(pixel_data) # Each pixel now will have mean 0 and variance 1
 
     # For applying the PCA
     pca = PCA(n_components=n_components, random_state=42)
@@ -451,4 +513,6 @@ def apply_pca_to_pixels(df_pixels, n_components=100, save_path=None):
     df_pca.insert(0, "objid", obj_ids)
 
     return df_pca
+
+
 
