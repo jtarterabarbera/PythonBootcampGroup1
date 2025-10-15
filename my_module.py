@@ -146,7 +146,7 @@ def load_TAP_data_parallel(URL, ra_slices=4, max_workers=4):
             job = tap.launch_job(adql)      # Perform the query
             results = job.get_results()     # Get results (table)
             df = results.to_pandas()
-            print(f"✅ Fetched slice RA {ra_min:.1f}–{ra_max:.1f} ({len(df)} rows)")
+            print(f"Fetched slice RA {ra_min:.1f}–{ra_max:.1f} ({len(df)} rows)")
             return df
         
         except Exception as e:
