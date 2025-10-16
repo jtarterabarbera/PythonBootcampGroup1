@@ -330,6 +330,60 @@ def fetch_sdss_pixels_version2(df,
 
     return df_pixels
 
+import numpy as np
+import pandas as pd
+
+def svd_from_pixel_df(df_pixels, id_col='objid', image_width_px=64, image_height_px=64, k=10):
+    """
+    Perform SVD on flattened pixel data for each image in df_pixels.
+
+    Parameters
+    ----------
+    df_pixels : pandas.DataFrame
+        DataFrame containing 'objid' and pixel columns (pix_0, pix_1, ..., pix_n).
+    id_col : str, optional
+        Column name for unique object IDs.
+    image_width_px : int, optional
+        Image width in pixels. Default = 64.
+    image_height_px : int, optional
+        Image height in pixels. Default = 64.
+    k : int, optional
+        Number of top singular values to keep.
+
+    Returns
+    -------
+    svd_df : pandas.DataFrame
+        DataFrame with `id_col` and SVD features (svd_comp_1, ..., svd_comp_k).
+    """
+    if not (0 < k <= min(image_width_px, image_height_px)):
+        raise ValueError(f"k must be between 1 and {min(image_width_px, image_height_px)}")
+
+    svd_feature_list = []
+    pixel_cols = [c for c in df_pixels.columns if c.startswith("pix_")]
+
+    for idx, row in df_pixels.iterrows():
+        raw_id = row[id_col]
+        pixel_values = row[pixel_cols].values
+
+        # Reshape flattened pixels back into image matrix
+        A = pixel_values.reshape((image_height_px, image_width_px)).astype(np.float64)
+
+        # Perform SVD (we only need singular values)
+        sigma = np.linalg.svd(A, compute_uv=False)
+
+        # Keep top-k singular values
+        top_k_vals = sigma[:k]
+        svd_row = {id_col: raw_id}
+        for i in range(k):
+            svd_row[f'svd_comp_{i+1}'] = top_k_vals[i]
+
+        svd_feature_list.append(svd_row)
+
+        if (idx + 1) % 10 == 0 or (idx + 1) == len(df_pixels):
+            print(f"SVD processed {idx+1}/{len(df_pixels)} images")
+
+    svd_df = pd.DataFrame(svd_feature_list)
+    return svd_df
 
 
 # -------------------------------
