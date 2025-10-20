@@ -31,13 +31,13 @@ Train a machine learning model to classify galaxies based on combined catalog an
 ### Functional Overview (mymodule.py)
 1. load_TAP_data_parallel()
 
-Parallelized data download from a TAP service by dividing the sky into RA slices.
+- Parallelized data download from a TAP service by dividing the sky into RA slices.
 
-Connects to a TAP service (e.g., SDSS or Galaxy Zoo) using astroquery.tap.
+- Connects to a TAP service (e.g., SDSS or Galaxy Zoo) using astroquery.tap.
 
-Fetches data slices in parallel using ThreadPoolExecutor.
+- Fetches data slices in parallel using ThreadPoolExecutor.
 
-Joins and deduplicates the results into a single pandas.DataFrame.
+- Joins and deduplicates the results into a single pandas.DataFrame.
 
 df = load_TAP_data_parallel(URL="https://some.tap.service/tap", ra_slices=4, max_workers=4)
 
