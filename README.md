@@ -4,7 +4,7 @@ This repository contains the work of Group 1 from the Python Bootcamp in Statist
 
 The goal of this project is to classify galaxy morphologies (e.g., spiral vs elliptical) using data from the Sloan Digital Sky Survey (SDSS) and the Galaxy Zoo project.
 
-### Project Goals 
+## Project Goals 
 
 - Load and merge astronomical data from TAP (Table Access Protocol) services.
 
@@ -16,7 +16,7 @@ The goal of this project is to classify galaxy morphologies (e.g., spiral vs ell
 
 - Train a machine learning model to classify galaxies based on combined catalog and image features.
 
-### Project Structure
+## Project Structure
 
 `├── mymodule.py                 # Core functions for data loading, cleaning, image fetching, and SVD`
 
@@ -28,7 +28,7 @@ The goal of this project is to classify galaxy morphologies (e.g., spiral vs ell
 
 `└── README.md                   # This file` 
 
-### Functional Overview (mymodule.py)
+## Functional Overview (mymodule.py)
 1. `load_TAP_data_parallel()`
 
 - Parallelized data download from a TAP service by dividing the sky into RA slices.
@@ -85,37 +85,37 @@ The goal of this project is to classify galaxy morphologies (e.g., spiral vs ell
 
 **Returns:** DataFrame of SVD features (`svd_comp_1`, `svd_comp_2`, …).
 
-### Data Processing Pipeline
-## Step 1: Load & Filter Data
+## Data Processing Pipeline
+### Step 1: Load & Filter Data
 
-Notebook: `LoadFilterData.ipynb`
+**Notebook:** `LoadFilterData.ipynb`
 
-Loads SDSS + Galaxy Zoo data from TAP.
+- Loads SDSS + Galaxy Zoo data from TAP.
 
-Filters it with `clean_data()`.
+- Filters it with `clean_data()`.
 
-Saves the merged catalog as MergedZooSpecPhotoDR19.csv.
+- Saves the merged catalog as `MergedZooSpecPhotoDR19.csv`.
 
-From an initial 138,960 galaxies, the clean subset reduces to 13,460.
+- From an initial 138,960 galaxies, the clean subset reduces to 13,460.
 
-Step 2: Extract Image Pixels & Features
+### Step 2: Extract Image Pixels & Features
 
-Notebook: `SDSS_Pixel_PCA.ipynb`
+**Notebook:** `SDSS_Pixel_PCA.ipynb`
 
-Downloads SDSS cutout images using `fetch_sdss_pixels()`.
+- Downloads SDSS cutout images using `fetch_sdss_pixels()`.
 
-Reduces pixel data using PCA or SVD for dimensionality reduction.
+- Reduces pixel data using PCA or SVD for dimensionality reduction.
 
-Merges results with the filtered catalog.
+- Merges results with the filtered catalog.
 
-Outputs `PCA_Pixels.csv` with combined catalog + image features.
+- Outputs `PCA_Pixels.csv` with combined catalog + image features.
 
-Step 3: Machine Learning
+### Step 3: Machine Learning
 
-Notebook: `MachineLearning.ipynb`
+**Notebook:** `MachineLearning.ipynb`
 
-Applies a Random Forest classifier to predict galaxy morphology.
+- Applies a Random Forest classifier to predict galaxy morphology.
 
-Uses both catalog and image-based features.
+- Uses both catalog and image-based features.
 
-Evaluates model performance using standard ML metrics.
+- Evaluates model performance using standard ML metrics.
