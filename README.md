@@ -16,7 +16,7 @@ Extract key features from images using Singular Value Decomposition (SVD) or PCA
 
 Train a machine learning model to classify galaxies based on combined catalog and image features.
 
-### Project Structure
+### Project Structure
 
 ├── mymodule.py                 # Core functions for data loading, cleaning, image fetching, and SVD
 
