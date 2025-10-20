@@ -17,10 +17,10 @@ Extract key features from images using Singular Value Decomposition (SVD) or PCA
 Train a machine learning model to classify galaxies based on combined catalog and image features.
 
 ### Project Structure
-├── mymodule.py                 # Core functions for data loading, cleaning, image fetching, and SVD
-├── LoadFilterData.ipynb        # Loads and filters TAP data, creates MergedZooSpecPhotoDR19.csv
-├── SDSS_Pixel_PCA.ipynb        # Downloads SDSS images, applies SVD, creates SVD_Pixels.csv
-├── Final_ML_Code.ipynb         # Machine Learning code for galaxy morphology
+├── mymodule.py                 # Core functions for data loading, cleaning, image fetching, and SVD\\
+├── LoadFilterData.ipynb        # Loads and filters TAP data, creates MergedZooSpecPhotoDR19.csv\\
+├── SDSS_Pixel_PCA.ipynb        # Downloads SDSS images, applies SVD, creates SVD_Pixels.csv\\
+├── Final_ML_Code.ipynb         # Machine Learning code for galaxy morphology\\
 └── README.md                   # This file
 
 ### Functional Overview (mymodule.py)
