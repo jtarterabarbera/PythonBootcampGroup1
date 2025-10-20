@@ -6,20 +6,20 @@ The goal of this project is to classify galaxy morphologies (e.g., spiral vs ell
 
 ### Project Goals 
 
-Load and merge astronomical data from TAP (Table Access Protocol) services.
+- Load and merge astronomical data from TAP (Table Access Protocol) services.
 
-Clean and filter the catalog to remove invalid or uncertain measurements.
+- Clean and filter the catalog to remove invalid or uncertain measurements.
 
-Download and preprocess galaxy images (SDSS cutouts) in parallel.
+- Download and preprocess galaxy images (SDSS cutouts) in parallel.
 
-Extract key features from images using Singular Value Decomposition (SVD) or PCA.
+- Extract key features from images using Singular Value Decomposition (SVD) or PCA.
 
-Train a machine learning model to classify galaxies based on combined catalog and image features.
+- Train a machine learning model to classify galaxies based on combined catalog and image features.
 
 ### Project Structure
 
 `
-├── mymodule.py                 # Core functions for data loading, cleaning, image fetching, and SVD
+├── mymodule.py                 # Core functions for data loading, cleaning, image fetching, and SVD\\
 ├── LoadFilterData.ipynb        # Loads and filters TAP data, creates MergedZooSpecPhotoDR19.csv
 ├── SDSS_Pixel_PCA.ipynb        # Downloads SDSS images, applies SVD, creates SVD_Pixels.csv
 ├── Final_ML_Code.ipynb         # Machine Learning code for galaxy morphology
