@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from astroquery.utils.tap.core import TapPlus 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import urllib.request
@@ -89,50 +90,6 @@ def load_TAP_data_parallel(URL, ra_slices=4, max_workers=4):
 
 # -------------------------------
 # Data cleaning
-
-
-    # Apply the mask to filter the DataFrame
-    mask = (
-        # Correct magnitudes
-        (df["modelMag_u"] > -30)
-        & (df["modelMag_g"] > -30)
-        & (df["modelMag_r"] > -30)
-        & (df["modelMag_i"] > -30)
-        & (df["modelMag_z"] > -30)
-        &
-        # reasonable errors
-        (df["modelMagErr_u"] < 0.5)
-        & (df["modelMagErr_g"] < 0.05)
-        & (df["modelMagErr_r"] < 0.05)
-        & (df["modelMagErr_i"] < 0.05)
-        & (df["modelMagErr_z"] < 0.1)
-        &
-        # very certain about the classification
-        ((df["p_cs_debiased"] >= 0.9) | (df["p_el_debiased"] >= 0.9))
-        &
-        # medium size
-        (df["petroR90_r"] * 2 * 1.5 / 0.4 < 64)
-        & (df["petroR90_r"] * 2 / 0.4 > 20)
-    )
-
-    cols_to_keep = (
-        [
-            "specobjid",
-            "objid",
-            "ra",
-            "dec",
-            "p_el_debiased",
-            "p_cs_debiased",
-            "spiral",
-            "elliptical",
-        ]
-        + ["petroR50_r", "petroR90_r"]
-        + [f"modelMag_{f}" for f in "ugriz"]
-        + [f"extinction_{f}" for f in "ugriz"]
-    )
-
-    df_filtered = df[mask][cols_to_keep]
-    return df_filtered
 
 
 def clean_data(df):
@@ -248,9 +205,9 @@ def fetch_sdss_pixels(df,
         url = URL_TEMPLATE.format(ra=ra, dec=dec, scale=image_pixscale,
                                   width=image_width_px, height=image_height_px)
         try:
-            blob = urllib.request.urlopen(url).read()
-            image = PILImage.open(BytesIO(blob)).convert("L")
-            pixels = list(image.getdata())
+            blob = urllib.request.urlopen(url).read()            # Get the image from the url (via HTTP GET request)
+            image = PILImage.open(BytesIO(blob)).convert("L")    # Wrap in a file-like BytesIO buffer, PIL opens the image, converts as grayscale ("L" mode)
+            pixels = list(image.getdata())                       # Get pixel values as a flat list
             return objid, pixels
         except Exception as e:
             print(f"⚠️ Error for objid {objid}: {e}")
@@ -259,79 +216,18 @@ def fetch_sdss_pixels(df,
     # Parallel download
     pixel_data = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(fetch_image_pixels, row) for idx, row in df.iterrows()]
-        for f in as_completed(futures):
-            objid, pixels = f.result()
-            if pixels is not None:
-                pixel_data.append({"objid": objid, **{f"pix_{i}": val for i, val in enumerate(pixels)}})
-
-    df_pixels = pd.DataFrame(pixel_data)
-
-    return df_pixels
-
-
-
-def fetch_sdss_pixels_version2(df, 
-                      image_pixscale=0.4, 
-                      image_width_px=64, 
-                      image_height_px=64, 
-                      max_workers=4,
-                      save_path=None,
-                      retries=3, # number of retries per image, avoid timeouts
-                      timeout=5): # timeout per image in seconds
-    """
-    Download SDSS cutout images for a DataFrame of objects (RA, DEC, OBJID)
-    in parallel, with retries and timeout, and return a flattened pixel DataFrame.
-    """
-
-    URL_TEMPLATE = (
-        "https://skyserver.sdss.org/DR19/SkyserverWS/ImgCutout/getjpeg?"
-        "ra={ra}&dec={dec}&scale={scale}&width={width}&height={height}"
-    )
-    # Function to parallelize: fetch one image with retries
-    def fetch_image_pixels(row):
-        """Fetch pixels for one object, with retries and timeout."""
-        objid, ra, dec = row["objid"], row["ra"], row["dec"]
-
-        for attempt in range(1, retries + 1):
-            try:
-                url = URL_TEMPLATE.format(ra=ra, dec=dec, scale=image_pixscale,
-                                          width=image_width_px, height=image_height_px)
-                
-                blob = urllib.request.urlopen(url, timeout=timeout).read() # Get the image from the url (via HTTP GET request)
-                bytes = blob.read()                                        # Gives the raw binary data (the JPEG file contents).
-                image = PILImage.open(BytesIO(bytes)).convert("L")         # Wrap in a file-like BytesIO buffer, PIL opens the image, converts as grayscale ("L" mode)
-                pixels = list(image.getdata())                             # Get pixel values as a flat list
-
-                return objid, pixels
-            
-            except Exception as e:
-                print(f"⚠️ objid {objid}, attempt {attempt}/{retries} failed: {e}")
-                time.sleep(0.5)  # short delay before retrying
-
-        # All retries failed
-        return objid, None
-
-    # Parallel download
-    pixel_data = [] # List of dicts with objid and pixel columns
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(fetch_image_pixels, row) for _, row in df.iterrows()] # Schedule each row as a separate task
+        futures = [executor.submit(fetch_image_pixels, row) for idx, row in df.iterrows()] # Schedule each row as a separate task
         for f in as_completed(futures):
             objid, pixels = f.result()
             if pixels is not None:
                 pixel_data.append({"objid": objid, **{f"pix_{i}": val for i, val in enumerate(pixels)}}) # Flatten pixels into columns
 
-    # Combine all into a DataFrame
     df_pixels = pd.DataFrame(pixel_data)
-
-    # Optionally save to CSV
-    if save_path is not None:
-        df_pixels.to_csv(save_path, index=False)
 
     return df_pixels
 
-import numpy as np
-import pandas as pd
+# -------------------------------
+# SVD on pixel data
 
 def svd_from_pixel_df(df_pixels, id_col='objid', image_width_px=64, image_height_px=64, k=10):
     """
@@ -384,112 +280,5 @@ def svd_from_pixel_df(df_pixels, id_col='objid', image_width_px=64, image_height
 
     svd_df = pd.DataFrame(svd_feature_list)
     return svd_df
-
-
-# -------------------------------
-# PCA on pixel data
-
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-import pandas as pd
-
-def determine_optimal_pca_components(df_pixels, variance_threshold=0.95):
-    """
-    Determine the optimal number of PCA components required to explain
-    a given percentage of the total variance in the pixel data.
-
-    This function standardizes the pixel data, fits a PCA model
-    with all available components, and computes the cumulative explained
-    variance ratio to identify how many components are needed to retain
-    the desired amount of information (e.g., 95%).
-
-    Parameters
-    ----------
-    df_pixels : pandas.DataFrame
-        DataFrame containing 'objid' and pixel columns (pix_0, pix_1, ...).
-        Each row corresponds to one image.
-    variance_threshold : float, optional
-        Desired cumulative variance ratio (between 0 and 1). 
-        Default = 0.95 (i.e., 95% of the variance).
-
-    Returns
-    -------
-    n_components : int
-        Minimum number of principal components needed to reach 
-        the specified variance threshold.
-    explained_variance_ratio : pandas.Series
-        Cumulative explained variance ratio for all components.
-
-    Example
-    -------
-    >>> n, var_ratio = determine_optimal_pca_components(df_pixels, 0.95)
-    >>> print(f"Optimal components: {n}")
-    >>> df_pca = apply_pca_to_pixels(df_pixels, n_components=n)
-    """
-
-    # Separate pixel data from object IDs
-    pixel_data = df_pixels.drop(columns=["objid"], errors="ignore")
-
-    # Normalize pixel values
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(pixel_data)
-
-    # Fit PCA with all available components
-    pca = PCA()
-    pca.fit(X_scaled)
-
-    # Calculate cumulative explained variance
-    cumulative_variance = pca.explained_variance_ratio_.cumsum() 
-
-    # Determine number of components needed to reach the threshold
-    n_components = (cumulative_variance < variance_threshold).sum() + 1
-
-    # Return both the number of components and the cumulative variance series
-    return n_components, pd.Series(cumulative_variance)
-
-
-
-def apply_pca_to_pixels(df_pixels, n_components=100, save_path=None):
-    """
-    Apply PCA to pixel data to identify the principal components 
-    — linear combinations of pixels that explain the largest 
-    amount of variation among images. This allows representing 
-    each image with fewer variables while retaining most of the visual information.
-
-    Parameters
-    ----------
-    df_pixels : pandas.DataFrame
-        DataFrame containing 'objid' and pixel columns (pix_0, pix_1, ...)
-    df_filtered : pandas.DataFrame
-        Original metadata DataFrame containing 'objid' and other columns
-    n_components : int, optional
-        Number of PCA components to keep. Default = 100
-    save_path : str, optional
-        If provided, saves the resulting merged DataFrame to CSV.
-
-    Returns
-    -------
-    df_final : pandas.DataFrame
-        Metadata DataFrame merged with PCA components, ready for ML.
-    """
-
-    # Separate objid from pixel data
-    obj_ids = df_pixels["objid"]
-    pixel_data = df_pixels.drop(columns=["objid"])
-
-    # To normalize pixel data
-    scaler = StandardScaler() 
-    X_scaled = scaler.fit_transform(pixel_data) # Each pixel now will have mean 0 and variance 1
-
-    # For applying the PCA
-    pca = PCA(n_components=n_components, random_state=42)
-    X_pca = pca.fit_transform(X_scaled)
-
-    # For building a PCA DataFrame
-    df_pca = pd.DataFrame(X_pca, columns=[f"PC{i+1}" for i in range(n_components)])
-    df_pca.insert(0, "objid", obj_ids)
-
-    return df_pca
-
 
 
