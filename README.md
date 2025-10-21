@@ -2,7 +2,7 @@
 
 This repository contains the work of Group 1 from the Python Bootcamp in Statistics and Data Analysis for the MSc in High Energy Physics, Astrophysics, and Cosmology at the Autonomous University of Barcelona.
 
-The goal of this project is to classify galaxy morphologies (e.g., spiral vs elliptical) using data from the Sloan Digital Sky Survey (SDSS) and the Galaxy Zoo project.
+The goal of this project is to classify galaxy morphologies (spiral vs elliptical) using data from the Sloan Digital Sky Survey (SDSS) and the Galaxy Zoo project.
 
 ## Project Goals 
 
@@ -12,7 +12,7 @@ The goal of this project is to classify galaxy morphologies (e.g., spiral vs ell
 
 - Download and preprocess galaxy images (SDSS cutouts) in parallel.
 
-- Extract key features from images using Singular Value Decomposition (SVD) or PCA.
+- Extract key features from images using Singular Value Decomposition (SVD) to reduce the dimensionality of the dataset.
 
 - Train a machine learning model to classify galaxies based on combined catalog and image features.
 
@@ -20,7 +20,7 @@ The goal of this project is to classify galaxy morphologies (e.g., spiral vs ell
 
 `├── mymodule.py                 # Core functions for data loading, cleaning, image fetching, and SVD`
 
-`├── LoadFilterData.ipynb        # Loads and filters TAP data, creates MergedZooSpecPhotoDR19.csv`
+`├── LoadFilterData.ipynb        # Loads and filters TAP data, creates FilteredZooSpecPhotoDR19.csv`
 
 `├── SDSS_Pixel_PCA.ipynb        # Downloads SDSS images, applies SVD, creates SVD_Pixels.csv`
 
@@ -65,8 +65,6 @@ The goal of this project is to classify galaxy morphologies (e.g., spiral vs ell
 
 - Converts each image to grayscale and flattens it into a pixel vector.
 
-- Optionally saves the result to a CSV file.
-
 `df_pixels = fetch_sdss_pixels(df_clean, max_workers=8)`
 
 **Returns:** pixel DataFrame with columns like objid, pix_0, pix_1, ..., pix_n.
@@ -90,32 +88,28 @@ The goal of this project is to classify galaxy morphologies (e.g., spiral vs ell
 
 **Notebook:** `LoadFilterData.ipynb`
 
-- Loads SDSS + Galaxy Zoo data from TAP.
+- Loads SDSS + Galaxy Zoo data from TAP with `load_TAP_data_parallel()`.
 
 - Filters it with `clean_data()`.
 
-- Saves the merged catalog as `MergedZooSpecPhotoDR19.csv`.
+- Saves the merged catalog as `FilteredZooSpecPhotoDR19.csv`.
 
-- From an initial 138,960 galaxies, the clean subset reduces to 13,460.
+- From an initial 159 099 galaxies, the clean subset reduces to 15 582.
 
 ### Step 2: Extract Image Pixels & Features
 
-**Notebook:** `SDSS_Pixel_PCA.ipynb`
+**Notebook:** `SDSS_Pixel_SVD.ipynb`
 
 - Downloads SDSS cutout images using `fetch_sdss_pixels()`.
 
-- Reduces pixel data using PCA or SVD for dimensionality reduction.
+- Reduces pixel data using SVD for dimensionality reduction.
 
 - Merges results with the filtered catalog.
 
-- Outputs `PCA_Pixels.csv` with combined catalog + image features.
+- Outputs `SVD_Pixels.csv` with combined catalog + image features.
 
 ### Step 3: Machine Learning
 
-**Notebook:** `MachineLearning.ipynb`
+**Notebook:** `Final_ML_code.ipynb`
 
-- Applies a Random Forest classifier to predict galaxy morphology.
-
-- Uses both catalog and image-based features.
-
-- Evaluates model performance using standard ML metrics.
+- 
