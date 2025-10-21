@@ -8,35 +8,14 @@ The goal of this project is to classify galaxy morphologies (spiral vs elliptica
 
 - Load and merge astronomical data from TAP (Table Access Protocol) services.
 
-<<<<<<< HEAD
-1. LoadFilterData.ipynb Loads and Filters the data and creates the file 'MergedZooSpecPhotoDR19.csv'. 
-    -The information loaded ads up to 138.960 galaxies and after the filtering reduces to 13.460. 
-2. SDSS_Pixel_PCA.ipynb Extracts the pixels of the images of a sample of 'MergedZooSpecPhotoDR19.csv' using the coordinates (ra,dec). 
-    -Download SDSS cutout images for a sample of 'MergedZooSpecPhotoDR19.csv' of objects (RA, DEC, OBJID) in parallel and return a flattened pixel DataFrame.
-    -The procedure is parallelized for faster results. Then SVD is applied to get the k, (k=10), most important singular values which describe the structure of the image. 
-    -Then it merges with MergedZooSpecPhotoDR19.csv and creates SVD_Pixels.csv with the final table. 
-3. Machine Learning algoritm using Random forest, Logistic Regression, and SVM.
-    -The target variable is constructed to be 0 for elliptical galaxies and 1 for spiral galaxies.
-    -We note an imbalance between the classes, with class 1 being approximately 3.5x larger than class 0.
-    -Nonetheless, the results show that the algorithms were able to find an effective linear separation of the data points.
-    -For application purposes, we would choose the logistic regression model since it is linear in its decision boundary and easy to calibrate.
-  
-=======
 - Clean and filter the catalog to remove invalid or uncertain measurements.
 
 - Download and preprocess galaxy images (SDSS cutouts) in parallel.
 
 - Extract key features from images using Singular Value Decomposition (SVD) to reduce the dimensionality of the dataset.
->>>>>>> 80f061e27235ecbe69365b58c294f3dcd09b9085
 
 - Train a machine learning model to classify galaxies based on combined catalog and image features.
 
-<<<<<<< HEAD
-IDEAS README: 
-- objectius
-- project structure
-- ML algorithms (1 or many?)
-=======
 ## Project Structure
 
 `├── mymodule.py                 # Core functions for data loading, cleaning, image fetching, and SVD`
@@ -45,7 +24,7 @@ IDEAS README:
 
 `├── SDSS_Pixel_PCA.ipynb        # Downloads SDSS images, applies SVD, creates SVD_Pixels.csv`
 
-`├── Final_ML_Code.ipynb         # Machine Learning code for galaxy morphology. Uses SVM, RF, LogReg
+`├── Final_ML_Code.ipynb         # Machine Learning code for galaxy morphology. Uses SVM, RF, LogReg`
 
 `└── README.md                   # This file` 
 
@@ -137,11 +116,11 @@ IDEAS README:
 
 - Defines train, validation, and test splits (60%, 20%, 20%)
 
-- Trains each of the 3 candidate models on the train split
+- Trains each of the 3 candidate models on the train split: LogReg, SVM, rf
 
 - Uses the validation split to select the best hyperparameters from a given set
 
 - Finally, compares the performance of each of the optimized models on the test set. Each of the models performs relatively equal, aroun 100% accuracy
 
 - Conclusion: We would choose the LogReg model due to its linear decision boundary, ease of interpretation for feature weights, and simple calibration
->>>>>>> 80f061e27235ecbe69365b58c294f3dcd09b9085
+
